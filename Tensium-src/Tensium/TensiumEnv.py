@@ -21,6 +21,7 @@ class TensiumEnv(Env):
     goal: TensiumBaseGoal = None
     driver_wrapper: ChromeDriverWrapper = None
     last_run_time: datetime = None
+    reset_callback = None
     state: int = 0
     max_tries: int = 0
     tries_remaining: int = 0
@@ -30,7 +31,7 @@ class TensiumEnv(Env):
     steps_session: list = []
     step_frames: list = []
 
-    def __init__(self, driver_path: string, actions: list, discounts: int, goal: TensiumBaseGoal, max_tries: int = -1, max_tries_factor: int = 3):
+    def __init__(self, driver_path: string, actions: list, discounts: int, goal: TensiumBaseGoal, max_tries: int = -1, max_tries_factor: int = 3, reset_callback = None):
         self.driver_wrapper = ChromeDriverWrapper(driver_path)
         self.action_space = Discrete(3)
         self.observation_space = Box(low=np.array([0], dtype=int), high=np.array([100], dtype=int), shape=(1,), dtype=int)
@@ -38,6 +39,7 @@ class TensiumEnv(Env):
         self.discounts = discounts
         self.goal = goal
         self.state = 0
+        self.reset_callback = reset_callback
 
         if max_tries_factor < 0:
             max_tries_factor = 1
@@ -131,9 +133,17 @@ class TensiumEnv(Env):
 
         return self.state, final_reward, done, info
 
-    def reset(self): 
+    def _reset(self):
         self.driver_wrapper.reset()
         self.tries_remaining = self.max_tries
         self.state = np.random.randint(0, len(self.actions))
         self.steps_session = []
+
+    def reset(self): 
+        if self.reset_callback is not None:
+            if self.reset_callback(self) == True:
+                self._reset()
+        else:
+            self._reset()
+        
         return self.state

@@ -9,6 +9,15 @@ The aim of this project is to automate the automation process. Currently, while 
 Let's automate the automation process using Artificial Intelligence. Tensium learns how to navigate your webpage.
 
 Use the botebook to get started with an example / tutorial, or use the python code to start building test cases.
+In the src folder, you will find a [Jupyter Notebook](https://github.com/montraydavis/Tensium/blob/main/Tensium-src/notebook.ipynb) which breaks down the process.
+
+# Dependencies
+
+- Gym
+- Stable Baselines 3
+- Numpy
+- Selenium
+- Matplotlib
 
 # Features
 

@@ -45,6 +45,6 @@ logged_in_goal = TensiumTextEqualsGoal(
 
 login_test_case = TestCase('myfirst_testcase', actions,
                            [discount_error_login], logged_in_goal, os.getcwd()+'\\Tensium-src\\')
-login_test_case.Learn(2)
+login_test_case.Learn()
 login_test_case.Run()
 login_test_case.Finish()

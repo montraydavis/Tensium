@@ -25,6 +25,9 @@ Use the botebook to get started with an example / tutorial, or use the python co
 - Selenium
   - Full Selenium Support
 
+## TestCases
+- Easily and quickly create separated test cases with an individual learning model.
+
 ## Log
 
 v.0.0.1:
@@ -34,6 +37,13 @@ Initial release.
 - Basic training
 - Selenium Command Wrappers
 
+v.0.0.2:
+
+
+- TestCase support.
+  - Create individual testcases driven by TensiumEnv.
+- Minor fixes
+- Notebook update
 
 ---
 

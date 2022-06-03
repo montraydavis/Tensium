@@ -1,5 +1,5 @@
 import string
-from Tensium.TensiumEnv import TensiumEnv
+from Tensium.envs.TensiumEnv import TensiumEnv
 from Tensium.goals.TensiumTextComparerBaseGoal import TensiumTextComparerBaseGoal
 
 class TensiumTextEndsWithGoal(TensiumTextComparerBaseGoal):

@@ -1,3 +1,4 @@
+import os
 import string
 import gym
 import numpy as np
@@ -10,7 +11,7 @@ from PIL import Image
 from gym import Env
 from gym.spaces import Discrete, Box
 
-from Tensium.SeleniumWrapper import ChromeDriverWrapper
+from Tensium.envs.SeleniumWrapper import ChromeDriverWrapper
 from Tensium.commands.SeleniumBaseCommand import SeleniumBaseCommand
 from Tensium.commands.SeleniumSetTextCommand import SeleniumSetTextCommand
 from Tensium.goals.TensiumBaseGoal import TensiumBaseGoal
@@ -31,8 +32,8 @@ class TensiumEnv(Env):
     steps_session: list = []
     step_frames: list = []
 
-    def __init__(self, driver_path: string, actions: list, discounts: int, goal: TensiumBaseGoal, max_tries: int = -1, max_tries_factor: int = 3, reset_callback = None):
-        self.driver_wrapper = ChromeDriverWrapper(driver_path)
+    def __init__(self, actions: list, discounts: list, goal: TensiumBaseGoal, working_dir: string, max_tries: int = -1, max_tries_factor: int = 3, reset_callback = None):
+        self.driver_wrapper = ChromeDriverWrapper(working_dir+ '\\chromedriver.exe')
         self.action_space = Discrete(3)
         self.observation_space = Box(low=np.array([0], dtype=int), high=np.array([100], dtype=int), shape=(1,), dtype=int)
         self.actions = actions
@@ -67,7 +68,7 @@ class TensiumEnv(Env):
 
         return img
 
-    def get_metrics(self, start_time: datetime, action: int, reward: int, total_discount: int, pixels) -> dict:
+    def get_metrics(self, start_time: datetime, action: int, reward: int, total_discount: int) -> dict:
         last_run = 0
 
         if self.last_run_time is None:
@@ -79,17 +80,17 @@ class TensiumEnv(Env):
             'action': action,
             'reward': (reward + total_discount),
             'duration': (datetime.now() - start_time).total_seconds(),
-            'since_last_run': last_run,
-            'frame': pixels
+            'since_last_run': last_run
         }
 
         return info
 
     def step(self, action: int):
+        start_time = datetime.now()
+        
         if self.tries_remaining <= 0:
             return self.state, 0, True, self.get_metrics(start_time=start_time, action=action, reward=0, total_discount=0)
         
-        start_time = datetime.now()
 
         self.state = action
         reward = 1
@@ -112,7 +113,10 @@ class TensiumEnv(Env):
 
         # Get screenshot and compare with previous pixel data
         img = self.get_screenshot()
-        img_compare_match = compare_image(img, self.prev_image)
+        if self.prev_image is not None:
+            img_compare_match = compare_image(img, self.prev_image)
+        else:
+            img_compare_match = True
 
         # Give a reward for noticing a difference
         if img_compare_match == False:
@@ -121,7 +125,7 @@ class TensiumEnv(Env):
         final_reward = (reward - total_discount)
 
         # Calculate step metrics
-        info = self.get_metrics(start_time=start_time, action=action, reward=reward, total_discount=total_discount, pixels=pixels)
+        info = self.get_metrics(start_time=start_time, action=action, reward=reward, total_discount=total_discount)
 
         self.tries_remaining -= 1
         self.last_run_time = datetime.now()
@@ -130,6 +134,7 @@ class TensiumEnv(Env):
         self.steps_history.append(info)
         self.steps_session.append(info)
         self.step_frames.append(img)
+        self.prev_image = img
 
         return self.state, final_reward, done, info
 

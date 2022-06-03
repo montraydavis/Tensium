@@ -1,7 +1,7 @@
 import string
 from selenium.webdriver import Chrome
 
-from Tensium.TensiumEnv import TensiumEnv
+from Tensium.envs.TensiumEnv import TensiumEnv
 from Tensium.goals.TensiumBaseGoal import TensiumBaseGoal
 
 class TensiumTextComparerBaseGoal(TensiumBaseGoal):

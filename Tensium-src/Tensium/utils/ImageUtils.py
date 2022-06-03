@@ -4,7 +4,7 @@ import io
 from PIL import Image
 
 
-def compare_image(self, image1, image2) -> bool:
+def compare_image(image1, image2) -> bool:
     if image1 is not None:
         prev_image_match = True
         for prev_image in range(0, len(image2)):

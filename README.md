@@ -1,6 +1,9 @@
 # Tensium
 Use Selenium and Machine Learning to figure out how to navigate a website.
 
+![Tensium In Action](https://github.com/montraydavis/Tensium/blob/main/Tensium-src/content/001.gif?raw=true)
+
+
 
 # Why Tensium?
 

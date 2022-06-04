@@ -18,6 +18,8 @@ Tensium API Walker allows Automation Engineers to build complex yet easily maint
 
 This library makes it easy to quickly write automated API tests which require little to no maintenance (when using forward-feeding).
 
+Be sure to run the API project in content/WebAPI
+
 ## How it works
 
 Given a list of endpoints, and their possible inputs, Tensium will figure out how to exeute an API endpoint.

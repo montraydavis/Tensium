@@ -3,8 +3,6 @@ from Tensium.envs.TensiumEnv import TensiumEnv
 from Tensium.goals.TensiumTextComparerBaseGoal import TensiumTextComparerBaseGoal
 import TensiumBaseGoal
 
-from selenium.webdriver import Chrome
-
 class TensiumTextContainsGoal(TensiumTextComparerBaseGoal):
 
     def __init__(self, element_selector: string, value_selector: string, config: dict) -> None:

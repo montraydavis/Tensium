@@ -5,7 +5,6 @@ import numpy as np
 import base64
 import io
 
-from datetime import date
 from datetime import datetime
 from PIL import Image
 from gym import Env
@@ -13,9 +12,10 @@ from gym.spaces import Discrete, Box
 
 from Tensium.envs.SeleniumWrapper import ChromeDriverWrapper
 from Tensium.commands.SeleniumBaseCommand import SeleniumBaseCommand
-from Tensium.commands.SeleniumSetTextCommand import SeleniumSetTextCommand
 from Tensium.goals.TensiumBaseGoal import TensiumBaseGoal
 from Tensium.utils.ImageUtils import compare_image
+
+from Helpers.ImageInlierDetector import ImageInlierDetector
 
 class TensiumEnv(Env):
     prev_image: list = None
@@ -31,11 +31,14 @@ class TensiumEnv(Env):
     steps_history: list = []
     steps_session: list = []
     step_frames: list = []
+    inlier_detector: ImageInlierDetector = ImageInlierDetector() 
 
-    def __init__(self, actions: list, discounts: list, goal: TensiumBaseGoal, working_dir: string, max_tries: int = -1, max_tries_factor: int = 3, reset_callback = None):
-        self.driver_wrapper = ChromeDriverWrapper(working_dir+ '\\chromedriver.exe')
+    def __init__(self, actions: list, discounts: list, goal: TensiumBaseGoal, working_dir: string, max_tries: int = -1, max_tries_factor: int = 3, reset_callback=None):
+        self.driver_wrapper = ChromeDriverWrapper(
+            working_dir + '\\chromedriver.exe')
         self.action_space = Discrete(3)
-        self.observation_space = Box(low=np.array([0], dtype=int), high=np.array([100], dtype=int), shape=(1,), dtype=int)
+        self.observation_space = Box(low=np.array([0], dtype=int), high=np.array([
+                                     100], dtype=int), shape=(1,), dtype=int)
         self.actions = actions
         self.discounts = discounts
         self.goal = goal
@@ -64,9 +67,10 @@ class TensiumEnv(Env):
     def get_screenshot(self):
         img_b64 = self.driver_wrapper.driver.get_screenshot_as_base64()
         decoded = base64.b64decode(img_b64)
-        img = list(Image.open(io.BytesIO(decoded)).getdata())
+        img = Image.open(io.BytesIO(decoded))
+        pixels = list(img.getdata())
 
-        return img
+        return img, pixels
 
     def get_metrics(self, start_time: datetime, action: int, reward: int, total_discount: int) -> dict:
         last_run = 0
@@ -87,10 +91,9 @@ class TensiumEnv(Env):
 
     def step(self, action: int):
         start_time = datetime.now()
-        
+
         if self.tries_remaining <= 0:
             return self.state, 0, True, self.get_metrics(start_time=start_time, action=action, reward=0, total_discount=0)
-        
 
         self.state = action
         reward = 1
@@ -112,9 +115,11 @@ class TensiumEnv(Env):
         done = self.goal.check_goal(self)
 
         # Get screenshot and compare with previous pixel data
-        img = self.get_screenshot()
+        img, pixels = self.get_screenshot()
         if self.prev_image is not None:
-            img_compare_match = compare_image(img, self.prev_image)
+            img_compare_match = compare_image(pixels, self.prev_image)
+            inliers = int(self.inlier_detector.get_image_inliers(img, self.prev_image_bytes))
+            x = inliers
         else:
             img_compare_match = True
 
@@ -125,7 +130,8 @@ class TensiumEnv(Env):
         final_reward = (reward - total_discount)
 
         # Calculate step metrics
-        info = self.get_metrics(start_time=start_time, action=action, reward=reward, total_discount=total_discount)
+        info = self.get_metrics(
+            start_time=start_time, action=action, reward=reward, total_discount=total_discount)
 
         self.tries_remaining -= 1
         self.last_run_time = datetime.now()
@@ -133,8 +139,9 @@ class TensiumEnv(Env):
         # Append historical information
         self.steps_history.append(info)
         self.steps_session.append(info)
-        self.step_frames.append(img)
-        self.prev_image = img
+        self.step_frames.append(pixels)
+        self.prev_image = pixels
+        self.prev_image_bytes = img
 
         return self.state, final_reward, done, info
 
@@ -144,11 +151,11 @@ class TensiumEnv(Env):
         self.state = np.random.randint(0, len(self.actions))
         self.steps_session = []
 
-    def reset(self): 
+    def reset(self):
         if self.reset_callback is not None:
             if self.reset_callback(self) == True:
                 self._reset()
         else:
             self._reset()
-        
+
         return self.state

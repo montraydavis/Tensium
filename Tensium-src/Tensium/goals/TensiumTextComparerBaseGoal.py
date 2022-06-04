@@ -1,5 +1,4 @@
 import string
-from selenium.webdriver import Chrome
 
 from Tensium.envs.TensiumEnv import TensiumEnv
 from Tensium.goals.TensiumBaseGoal import TensiumBaseGoal

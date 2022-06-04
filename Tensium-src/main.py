@@ -3,13 +3,14 @@ import os
 
 from selenium.webdriver import Chrome
 
-from Tensium.TrainAndLoggingCallback import TrainAndLoggingCallback
 
 from Tensium.commands.SeleniumSetTextCommand import SeleniumSetTextCommand
 from Tensium.commands.SeleniumClickCommand import SeleniumClickCommand
 
 from Tensium.goals.TensiumTextEqualsGoal import TensiumTextEqualsGoal
 from Tensium.TestCase import TestCase
+from Tensium.api_management.TensiumEndpoint import TensiumEndpoint
+from Tensium.api_management.TensiumAPIWalker import TensiumAPIWalker
 
 
 def discount_error_login(driver: Chrome) -> bool:
@@ -48,3 +49,37 @@ login_test_case = TestCase('myfirst_testcase', actions,
 login_test_case.Learn()
 login_test_case.Run()
 login_test_case.Finish()
+
+
+''' Tensium API Walker '''
+
+
+possible_inputs = {
+    'temperatureC': {
+        'allowed_values': '$'
+    },
+    'summary': {
+        'allowed_values': '$'
+    },
+    'id': {
+        'allowed_values': '$'
+    },
+    'date': {
+        'allowed_values': '$'
+    }
+}
+
+update_forecast_regression = {
+    'inputs': ['temperatureC', 'summary', 'date'],
+    'input_key': 'id'
+}
+
+forecasts = TensiumEndpoint(url='http://localhost:5120/weatherforecast',
+                            possible_inputs=None, method='GET', regression=None)
+
+update_forecast = TensiumEndpoint(url='http://localhost:5120/weatherforecast',
+                                  possible_inputs=possible_inputs, method='POST', regression=update_forecast_regression)
+
+endpoints = [forecasts, update_forecast]
+
+tensium_walker = TensiumAPIWalker().walk_chain(endpoints)

@@ -1,5 +1,4 @@
 import string
-from selenium.webdriver import Chrome
 
 
 class TensiumBaseGoal():

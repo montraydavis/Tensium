@@ -1,6 +1,5 @@
 from abc import abstractclassmethod
 
-
 class SeleniumBaseCommand():
     @abstractclassmethod
     def execute():

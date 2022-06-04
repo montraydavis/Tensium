@@ -1,7 +1,5 @@
 from cgitb import reset
 import string
-import os
-from gym import Env
 
 from stable_baselines3 import PPO
 from Tensium.goals.TensiumBaseGoal import TensiumBaseGoal

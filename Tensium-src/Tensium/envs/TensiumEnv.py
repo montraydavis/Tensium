@@ -1,161 +1,100 @@
-import os
 import string
-import gym
-import numpy as np
 import base64
 import io
 
-from datetime import datetime
 from PIL import Image
 from gym import Env
-from gym.spaces import Discrete, Box
+from gym.spaces import MultiDiscrete, Box, Dict
+from gym.utils import seeding
 
 from Tensium.envs.SeleniumWrapper import ChromeDriverWrapper
-from Tensium.commands.SeleniumBaseCommand import SeleniumBaseCommand
 from Tensium.goals.TensiumBaseGoal import TensiumBaseGoal
-from Tensium.utils.ImageUtils import compare_image
-
-from Helpers.ImageInlierDetector import ImageInlierDetector
+from Tensium.utils.EventSample import Eventsample
 
 class TensiumEnv(Env):
-    prev_image: list = None
+    numeric_obs_space: list = []
+    action_history: list = []
+    image_obs_space = None
     goal: TensiumBaseGoal = None
-    driver_wrapper: ChromeDriverWrapper = None
-    last_run_time: datetime = None
     reset_callback = None
-    state: int = 0
-    max_tries: int = 0
-    tries_remaining: int = 0
-    actions: list = []
-    discounts: list = []
-    steps_history: list = []
-    steps_session: list = []
-    step_frames: list = []
-    inlier_detector: ImageInlierDetector = ImageInlierDetector() 
 
-    def __init__(self, actions: list, discounts: list, goal: TensiumBaseGoal, working_dir: string, max_tries: int = -1, max_tries_factor: int = 3, reset_callback=None):
-        self.driver_wrapper = ChromeDriverWrapper(
-            working_dir + '\\chromedriver.exe')
-        self.action_space = Discrete(3)
-        self.observation_space = Box(low=np.array([0], dtype=int), high=np.array([
-                                     100], dtype=int), shape=(1,), dtype=int)
-        self.actions = actions
-        self.discounts = discounts
-        self.goal = goal
-        self.state = 0
-        self.reset_callback = reset_callback
+    event_handlers = {
+        'on_stepping': Eventsample(),
+        'on_stepped': Eventsample(),
+        'on_resetting': Eventsample(),
+        'on_reset': Eventsample(),
+    }
 
-        if max_tries_factor < 0:
-            max_tries_factor = 1
+    def seed(self, seed=None):
+        self.np_random, seed = seeding.np_random(seed)
+        return [seed]
 
-        if max_tries < 0:
-            max_tries = len(actions) * max_tries_factor
-
-        self.max_tries = max_tries
-        self.tries_remaining = max_tries
-        pass
-
-    def get_discounts(self):
-        total_discount = 0
-
-        for discount in self.discounts:
-            if discount(self.driver_wrapper.driver) == True:
-                total_discount += 1
-
-        return total_discount
-
-    def get_screenshot(self):
-        img_b64 = self.driver_wrapper.driver.get_screenshot_as_base64()
+    def _get_screenshot(self, element_selector):
+        img_b64 = self.driver_wrapper.driver.find_element_by_tag_name(element_selector).screenshot_as_base64
         decoded = base64.b64decode(img_b64)
         img = Image.open(io.BytesIO(decoded))
-        pixels = list(img.getdata())
 
-        return img, pixels
+        return img, img.getdata()
 
-    def get_metrics(self, start_time: datetime, action: int, reward: int, total_discount: int) -> dict:
-        last_run = 0
+    def _get_obs(self):
+        img_b64 = self.driver_wrapper.driver.find_element_by_tag_name("html").screenshot_as_base64
+        decoded = base64.b64decode(img_b64)
+        img = Image.open(io.BytesIO(decoded)).convert('RGB').getdata()
 
-        if self.last_run_time is None:
-            last_run = 0
-        else:
-            last_run = (datetime.now() - self.last_run_time).total_seconds()
+        return img
 
-        info = {
-            'action': action,
-            'reward': (reward + total_discount),
-            'duration': (datetime.now() - start_time).total_seconds(),
-            'since_last_run': last_run
+    def get_discounts(self):
+        return 0
+
+    def __init__(self, actions: list, goal: TensiumBaseGoal, working_dir: string, reset_callback):
+        self.actions = actions
+        self.goal = goal
+        self.working_dir = working_dir
+        self.driver_wrapper = ChromeDriverWrapper(
+            working_dir + '\\chromedriver.exe')
+        self.reset_callback = reset_callback
+
+        img, pixels = self._get_screenshot("body")
+
+        self.obs_info = {
+            'width': img.width,
+            'height': img.height
         }
 
-        return info
+        self.action_space = MultiDiscrete([len(actions)] * len(actions))
+        self.observation_space = Dict({
+            'screenshot': Box(low=0, high=255, shape=(img.height, img.width, 3))
+        })
+        
+        self.seed()
 
-    def step(self, action: int):
-        start_time = datetime.now()
+    def _execute_actions(self, actions):
+        for act in actions: self.actions[act].execute(self.driver_wrapper.driver)
 
-        if self.tries_remaining <= 0:
-            return self.state, 0, True, self.get_metrics(start_time=start_time, action=action, reward=0, total_discount=0)
+    def step(self, actions):
+        self.event_handlers['on_stepping']({'action':actions})
+        reward = 0
+        done = False
 
-        self.state = action
-        reward = 1
+        self._execute_actions(actions)
 
-        # Execute Selenium Command
-        callable_action: SeleniumBaseCommand = self.actions[action]
-        callable_action.execute(self.driver_wrapper.driver)
+        if self.goal.check_goal(self):
+            reward = 1
+            done = True
 
-        # Discounts
-        '''
-            Get Discounts
+        self.action_history.append([i for i in actions] + [reward])
 
-            Discount when agent hits negatively impacting feature.
-            IE:
-                Error dialog on login attempt
-        '''
-        total_discount = self.get_discounts()
+        info = {
+            'action':actions,
+            'history': self.action_history
+        }
 
-        done = self.goal.check_goal(self)
-
-        # Get screenshot and compare with previous pixel data
-        img, pixels = self.get_screenshot()
-        if self.prev_image is not None:
-            img_compare_match = compare_image(pixels, self.prev_image)
-            inliers = int(self.inlier_detector.get_image_inliers(img, self.prev_image_bytes))
-            x = inliers
-        else:
-            img_compare_match = True
-
-        # Give a reward for noticing a difference
-        if img_compare_match == False:
-            reward += 1
-
-        final_reward = (reward - total_discount)
-
-        # Calculate step metrics
-        info = self.get_metrics(
-            start_time=start_time, action=action, reward=reward, total_discount=total_discount)
-
-        self.tries_remaining -= 1
-        self.last_run_time = datetime.now()
-
-        # Append historical information
-        self.steps_history.append(info)
-        self.steps_session.append(info)
-        self.step_frames.append(pixels)
-        self.prev_image = pixels
-        self.prev_image_bytes = img
-
-        return self.state, final_reward, done, info
-
-    def _reset(self):
-        self.driver_wrapper.reset()
-        self.tries_remaining = self.max_tries
-        self.state = np.random.randint(0, len(self.actions))
-        self.steps_session = []
+        self.event_handlers['on_stepped'](info)
+        return dict(screenshot=self._get_obs()), reward, done, info
 
     def reset(self):
         if self.reset_callback is not None:
-            if self.reset_callback(self) == True:
-                self._reset()
-        else:
-            self._reset()
+            self.reset_callback(self)
 
-        return self.state
+    def render(self):
+        pass

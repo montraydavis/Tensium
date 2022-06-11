@@ -1,61 +1,129 @@
-from cgitb import reset
 import string
 
-from stable_baselines3 import PPO
-from Tensium.goals.TensiumBaseGoal import TensiumBaseGoal
+import keras
+import pandas as pd
+import tensorflow as tf
+import numpy as np
 
-from Tensium.TrainAndLoggingCallback import TrainAndLoggingCallback
+from Tensium.goals.TensiumBaseGoal import TensiumBaseGoal
 from Tensium.envs.TensiumEnv import TensiumEnv
 
-from stable_baselines3.common.vec_env.dummy_vec_env import DummyVecEnv
+from tensorflow import feature_column
+from keras.models import Sequential
+from keras.layers import Dense, Dropout
+
+
+class TestCaseModelCallback(keras.callbacks.Callback):
+    required_accuracy: float
+
+    def __init__(self, required_accuracy=.95) -> None:
+        super().__init__()
+        self.required_accuracy = required_accuracy
+
+    def on_epoch_end(self, epoch, logs=None):
+        if logs is not None and logs.get('accuracy') >= self.required_accuracy:
+            self.model.stop_training = True
 
 
 class TestCase():
-    LOG_DIR: string = ""
+    id: string
+    possible_actions: list
+    goal: TensiumBaseGoal
 
-    def __init__(self, id: string, possible_actions: list, discounts: list,
-                 goal: TensiumBaseGoal, working_dir: string, max_tries: int = -1,
-                 max_tries_factor: int = 3, reset_callback=None) -> None:
+    def _create_model(self, feature_layer, optimizer, loss):
+        model = Sequential([
+            feature_layer,
+            Dense(64, activation='relu'),
+            Dropout(0.2),
+            Dense(64, activation='relu'),
+            Dense(1, activation='sigmoid')
+        ])
 
+        model.compile(optimizer=optimizer,
+                      loss=loss,
+                      metrics=['accuracy'])
+
+        return model
+
+    def _create_sub_set(self, action_history: list, labels: list):
+        frames = []
+        for i in action_history:
+            _df = pd.DataFrame(np.array(i).reshape(-1, 4), columns=labels)
+            frames.append(_df)
+
+        df = pd.concat(frames)
+        labels_ds = df.pop(labels[-1])
+        df = tf.data.Dataset.from_tensor_slices((dict(df), labels_ds))
+        df = df.batch(1)
+
+        return df
+
+    def _create_set(self, action_history: list, labels: list):
+        df = pd.DataFrame([i for i in action_history], columns=labels)
+        labels_ds = df.pop(labels[-1])
+        df = tf.data.Dataset.from_tensor_slices((dict(df), labels_ds))
+        df = df.batch(1)
+
+        return df
+
+    def __init__(self, id: string, possible_actions: list, goal: TensiumBaseGoal, working_dir: string, reset_callback=None) -> None:
         self.id = id
         self.possible_actions = possible_actions
-        self.discounts = discounts
         self.goal = goal
         self.working_dir = working_dir
-        self.max_tries = max_tries,
-        self.max_tries_factor = max_tries_factor
         self.reset_callback = reset_callback
-        self.LOG_DIR = './' + id + '/logs'
-        self.CHECKPOINT_DIR = './' + id + '/train'
 
-        self.env = TensiumEnv(possible_actions, discounts, goal, working_dir,
-                              max_tries, max_tries_factor, reset_callback)
+        self.env = TensiumEnv(possible_actions, goal, working_dir,
+                              reset_callback)
 
-        self.oenv = self.env
+    def Learn(self, n_steps=10000, epochs=15, optimizer='adam', loss='mean_squared_error', force_end_success=0, required_accuracy=.95):
 
-        self.env = DummyVecEnv([lambda: self.env])
+        for i in range(n_steps):
+            if force_end_success > 0:
+                successful_sequences = len(
+                    [i for i in self.env.action_history if i[-1] == 1])
 
-    def Learn(self, n_steps=10000):
+                if successful_sequences >= force_end_success:
+                    break
 
-        callback = TrainAndLoggingCallback(
-            check_freq=2, save_path=self.working_dir+'\\train\\'+self.id+'\\')
+            sample = self.env.action_space.sample()
+            self.env.step(sample)
+            self.env.reset()
 
-        model = PPO('MlpPolicy', self.env, verbose=0, tensorboard_log=self.LOG_DIR, learning_rate=0.000001,
-                    n_steps=n_steps)
-        model.learn(total_timesteps=1, callback=callback)
-        pass
+            self.action_history = self.env.action_history
 
-    def Run(self):
-        model = PPO.load(
-            self.working_dir+'\\train\\'+self.id+'\\model.zip')
-        state = self.env.reset()
+        labels = ["LABEL_" + str(i)
+                  for i in range(len(self.env.action_history[0]))]
 
-        done = False
-        while done == False:
-            action, _ = model.predict(state)
-            state, reward, done, info = self.env.step(action)
+        train_ds = self._create_set(
+            [i for i in self.env.action_history], labels)
+
+        feature_columns = [
+            feature_column.numeric_column(i) for i in labels[:-1]]
+        feature_layer = tf.keras.layers.DenseFeatures(feature_columns)
+
+        model = self._create_model(feature_layer, optimizer, loss)
+        model.fit(train_ds, epochs=epochs, callbacks=[
+                  TestCaseModelCallback(required_accuracy=required_accuracy)])
+        model.save(self.working_dir+'\\train\\'+self.id)
+
+    def Run(self, n_steps=500):
+        model = keras.models.load_model(
+            self.working_dir+'\\train\\'+self.id)
+
+        for i in range(n_steps):
+            self.env.reset()
+            action_history = [i for i in self.env.action_history]
+            action_history_labels = ["LABEL_" + str(i)
+                                     for i in range(len(self.env.action_history[0]))]
+
+            train_ds = self._create_sub_set(
+                action_history, action_history_labels)
+
+            prediction = model.predict(train_ds)
+            best_sequence = np.argmax(prediction)
+            best_sequence = action_history[best_sequence]
+            self.env.step(best_sequence[:-1])
 
     def Finish(self):
-        self.oenv.driver_wrapper.driver.quit()
-
-
+        self.env.driver_wrapper.driver.quit()

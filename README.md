@@ -29,8 +29,9 @@ When chaining API calls, Tensium will forward feed the possible values to the ne
 # Dependencies
 
 - Gym
-- Stable Baselines 3
+- Tensorflow2
 - Numpy
+- Pandas
 - Selenium
 - Matplotlib
 
@@ -67,7 +68,19 @@ v.0.0.2:
 - Notebook update
 
 v.0.1.0:
+
 - Added Image Comparer (Tensorflow)
  - Compare previous screenshot to current screenshot noting differences with Tensorflow.
 - API test support
  - Build automated API tests.
+
+v.0.2.0:
+
+- New Machine Learning Architecture
+  - Tensorflow2.0 (Binary Crossentropy)
+- Observations
+  - Observe and compare visual changes in elements from sequence to sequence.
+- Code cleanup
+- Data structure changes
+ - MultiDiscrete Gym Observation Space
+
